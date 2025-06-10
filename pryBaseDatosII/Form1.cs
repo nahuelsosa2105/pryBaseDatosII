@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Data.SqlClient;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace pryBaseDatosII
@@ -49,36 +50,15 @@ namespace pryBaseDatosII
 
         private void button3_Click(object sender, EventArgs e)
         {
-            // Cargar Datos Masivos
-            using (SqlConnection conexion = conexionDB.CrearConexion())
-            {
-                if (conexion != null)
-                {
-                    string query = "SELECT * FROM Sales.SalesOrderDetail"; // Consulta de gran volumen
-                    SqlCommand comando = new SqlCommand(query, conexion);
-                    SqlDataReader reader = comando.ExecuteReader();
-
-                    int contador = 0;
-                    while (reader.Read())
-                    {
-                        contador++;
-                    }
-                    reader.Close();
-
-                    MessageBox.Show($"Consulta completada. Se cargaron {contador} registros.");
-                }
-            }
-        }
-
-        private void button2_Click(object sender, EventArgs e)
-        {
-            // Filtrar con Join Complejos
+            // Cargar Datos Masivos con sobrecarga en el servidor
             using (SqlConnection conexion = conexionDB.CrearConexion())
             {
                 if (conexion != null)
                 {
                     string query = @"
-                SELECT s.SalesOrderID, s.OrderDate, p.Name, c.FirstName, c.LastName
+                SELECT s.SalesOrderID, s.OrderDate, p.Name, c.FirstName, c.LastName, 
+                       d.LineTotal, SUM(d.LineTotal) OVER (PARTITION BY s.SalesOrderID) AS TotalPorOrden,
+                       AVG(d.LineTotal) OVER () AS PromedioTotal
                 FROM Sales.SalesOrderHeader s
                 INNER JOIN Sales.SalesOrderDetail d ON s.SalesOrderID = d.SalesOrderID
                 INNER JOIN Production.Product p ON d.ProductID = p.ProductID
@@ -95,7 +75,44 @@ namespace pryBaseDatosII
                     }
                     reader.Close();
 
-                    MessageBox.Show($"Consulta con joins ejecutada. Se procesaron {contador} registros.");
+                    MessageBox.Show($"Consulta completada con carga elevada. Se procesaron {contador} registros.");
+                }
+            }
+        }
+
+
+        private void button2_Click(object sender, EventArgs e)
+        {
+            // Filtrar con Join Complejos y carga intensiva
+            using (SqlConnection conexion = conexionDB.CrearConexion())
+            {
+                if (conexion != null)
+                {
+                    string query = @"
+                SELECT s.SalesOrderID, s.OrderDate, p.Name, c.FirstName, c.LastName, 
+       d.LineTotal, SUM(d.LineTotal) OVER (PARTITION BY s.SalesOrderID) AS TotalPorOrden,
+       AVG(d.LineTotal) OVER () AS PromedioTotal,
+       COUNT(*) OVER (PARTITION BY s.CustomerID) AS ComprasPorCliente,
+       RANK() OVER (ORDER BY s.OrderDate DESC) AS OrdenRanking
+FROM Sales.SalesOrderHeader s
+INNER JOIN Sales.SalesOrderDetail d ON s.SalesOrderID = d.SalesOrderID
+INNER JOIN Production.Product p ON d.ProductID = p.ProductID
+INNER JOIN Person.Person c ON s.CustomerID = c.BusinessEntityID
+ORDER BY s.OrderDate DESC;
+";
+
+                    SqlCommand comando = new SqlCommand(query, conexion);
+                    comando.CommandTimeout = 180; // Extiende el tiempo de espera
+                    SqlDataReader reader = comando.ExecuteReader();
+
+                    int contador = 0;
+                    while (reader.Read())
+                    {
+                        contador++;
+                    }
+                    reader.Close();
+
+                    MessageBox.Show($"Consulta con joins complejos ejecutada. Se procesaron {contador} registros con carga avanzada.");
                 }
             }
         }
@@ -116,20 +133,30 @@ namespace pryBaseDatosII
             }
         }
 
-        private void button4_Click(object sender, EventArgs e)
+        private async void button4_Click(object sender, EventArgs e)
         {
-            // Carga Intensiva en el Servidor
-            using (SqlConnection conexion = conexionDB.CrearConexion())
+            await Task.Run(() =>
             {
-                if (conexion != null)
+                using (SqlConnection conexion = conexionDB.CrearConexion())
                 {
-                    string query = "EXEC sp_ProcesamientoIntensivo"; // Ejecutar el procedimiento que genera carga
-                    SqlCommand comando = new SqlCommand(query, conexion);
-                    comando.ExecuteNonQuery();
+                    if (conexion != null)
+                    {
+                        SqlCommand comando = new SqlCommand("EXEC sp_ProcesamientoIntensivo2", conexion);
+                        comando.CommandTimeout = 180; // Extiende el tiempo de espera
 
-                    MessageBox.Show("Proceso intensivo ejecutado correctamente.");
+                        try
+                        {
+                            comando.ExecuteNonQuery();
+                        }
+                        catch (SqlException ex)
+                        {
+                            MessageBox.Show($"Error en la ejecución: {ex.Message}");
+                        }
+                    }
                 }
-            }
+            });
+
+            MessageBox.Show("Proceso intensivo ejecutado correctamente.");
         }
     }
 }

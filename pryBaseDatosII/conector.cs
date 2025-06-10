@@ -10,7 +10,7 @@ namespace pryBaseDatosII
         public conectorBaseDatos()
         {
             // Ajusta la cadena de conexión según tu configuración
-            cadenaConexion = "Server=DESKTOP-ND5NU74;Database=AdventureWorks2022;User Id=admin;Password=admin**;";
+            cadenaConexion = "Server=DESKTOP-ND5NU74;Database=AdventureWorks2019;User Id=admin;Password=admin**;";
         }
 
         public SqlConnection CrearConexion()
